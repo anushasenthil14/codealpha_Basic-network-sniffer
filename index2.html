@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AetherSniff | Real-Time Network Packet Analyzer</title>
+    <!-- Google Fonts: Outfit (UI) and JetBrains Mono (Code/Hex) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- FontAwesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="/static/css/style.css">
+    <!-- ChartJS CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div class="app-container">
+        <!-- HEADER / NAVIGATION -->
+        <header class="main-header">
+            <div class="brand">
+                <div class="logo-icon">
+                    <i class="fa-solid fa-circle-nodes"></i>
+                </div>
+                <div class="brand-text">
+                    <h1>AETHER<span>SNIFF</span></h1>
+                    <span class="tagline">Real-Time Packet Inspection</span>
+                </div>
+            </div>
+            
+            <div class="control-panel">
+                <!-- Interface Select -->
+                <div class="control-group">
+                    <label for="interface-select"><i class="fa-solid fa-ethernet"></i> Interface</label>
+                    <select id="interface-select">
+                        <option value="" disabled selected>Loading interfaces...</option>
+                    </select>
+                </div>
+                
+                <!-- BPF Filter Input -->
+                <div class="control-group filter-group">
+                    <label for="filter-input"><i class="fa-solid fa-filter"></i> BPF Filter</label>
+                    <input type="text" id="filter-input" placeholder="e.g. tcp port 80 or udp" title="BPF Sniffing Filter">
+                </div>
+                
+                <!-- Action Buttons -->
+                <div class="action-buttons">
+                    <button id="btn-start" class="btn btn-start" title="Start Sniffing">
+                        <i class="fa-solid fa-play"></i> Start
+                    </button>
+                    <button id="btn-stop" class="btn btn-stop" disabled title="Stop Sniffing">
+                        <i class="fa-solid fa-square"></i> Stop
+                    </button>
+                    <button id="btn-clear" class="btn btn-clear" title="Clear Packets">
+                        <i class="fa-solid fa-trash-can"></i> Clear
+                    </button>
+                </div>
+            </div>
+
+            <!-- PCAP Tools -->
+            <div class="pcap-tools">
+                <button id="btn-export" class="btn btn-secondary" title="Export to PCAP file">
+                    <i class="fa-solid fa-file-export"></i> Export PCAP
+                </button>
+                <div class="file-upload-wrapper">
+                    <button id="btn-import-trigger" class="btn btn-secondary" title="Import from PCAP file">
+                        <i class="fa-solid fa-file-import"></i> Import PCAP
+                    </button>
+                    <input type="file" id="pcap-file-input" accept=".pcap,.cap" style="display: none;">
+                </div>
+            </div>
+        </header>
+
+        <!-- DASHBOARD HERO SECTION: METRICS & CHARTS -->
+        <section class="dashboard-hero">
+            <!-- Stats Grid -->
+            <div class="stats-grid">
+                <div class="stat-card" id="card-total">
+                    <div class="stat-icon purple-glow"><i class="fa-solid fa-boxes-stacked"></i></div>
+                    <div class="stat-info">
+                        <span class="stat-label">Total Packets</span>
+                        <h2 id="stat-total-packets">0</h2>
+                    </div>
+                </div>
+                
+                <div class="stat-card" id="card-rate">
+                    <div class="stat-icon green-glow"><i class="fa-solid fa-gauge-high"></i></div>
+                    <div class="stat-info">
+                        <span class="stat-label">Capture Rate</span>
+                        <h2 id="stat-packets-rate">0 <span class="unit">pps</span></h2>
+                    </div>
+                </div>
+                
+                <div class="stat-card" id="card-size">
+                    <div class="stat-icon blue-glow"><i class="fa-solid fa-database"></i></div>
+                    <div class="stat-info">
+                        <span class="stat-label">Data Captured</span>
+                        <h2 id="stat-total-data">0 <span class="unit">KB</span></h2>
+                    </div>
+                </div>
+                
+                <div class="stat-card" id="card-status">
+                    <div class="stat-icon status-dot-wrapper">
+                        <div class="status-dot idle" id="sniffer-status-dot"></div>
+                    </div>
+                    <div class="stat-info">
+                        <span class="stat-label">Status</span>
+                        <h2 id="stat-status-text">IDLE</h2>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Analytics Charts -->
+            <div class="charts-container">
+                <div class="chart-card">
+                    <h3><i class="fa-solid fa-chart-pie"></i> Protocol Distribution</h3>
+                    <div class="chart-wrapper">
+                        <canvas id="protocol-chart"></canvas>
+                    </div>
+                </div>
+                <div class="chart-card">
+                    <h3><i class="fa-solid fa-chart-line"></i> Traffic Rate over Time (Packets)</h3>
+                    <div class="chart-wrapper">
+                        <canvas id="rate-chart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- MAIN WORKSPACE: PACKET LIST & DETAIL PANEL -->
+        <main class="workspace">
+            <!-- Packet Live Feed Table -->
+            <div class="packet-feed-container panel-card">
+                <div class="panel-header">
+                    <h2><i class="fa-solid fa-list-check"></i> Captured Packets</h2>
+                    <div class="panel-options">
+                        <div class="search-box">
+                            <i class="fa-solid fa-magnifying-glass"></i>
+                            <input type="text" id="packet-search" placeholder="Filter packets...">
+                        </div>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="auto-scroll-toggle" checked>
+                            <span class="slider"></span>
+                            <span class="toggle-label">Auto-Scroll</span>
+                        </label>
+                    </div>
+                </div>
+                
+                <div class="table-wrapper">
+                    <table class="packet-table" id="packet-table">
+                        <thead>
+                            <tr>
+                                <th style="width: 5%">No.</th>
+                                <th style="width: 12%">Time</th>
+                                <th style="width: 18%">Source</th>
+                                <th style="width: 18%">Destination</th>
+                                <th style="width: 10%">Protocol</th>
+                                <th style="width: 8%">Length</th>
+                                <th style="width: 29%">Info</th>
+                            </tr>
+                        </thead>
+                        <tbody id="packet-list">
+                            <!-- Live packets appended here -->
+                            <tr class="placeholder-row">
+                                <td colspan="7">No packets captured yet. Select an interface and click <strong>Start</strong> to sniff traffic.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Packet Detail Inspector -->
+            <div class="packet-inspector-container panel-card">
+                <div class="panel-header">
+                    <h2><i class="fa-solid fa-magnifying-glass-chart"></i> Packet Inspector</h2>
+                    <span class="active-packet-id" id="inspected-packet-id">No Packet Selected</span>
+                </div>
+                
+                <div class="inspector-tabs">
+                    <button class="tab-btn active" data-tab="protocol-tree-tab">
+                        <i class="fa-solid fa-folder-tree"></i> Protocol Layers
+                    </button>
+                    <button class="tab-btn" data-tab="hexdump-tab">
+                        <i class="fa-solid fa-binary"></i> Hex Dump
+                    </button>
+                    <button class="tab-btn" data-tab="payload-tab">
+                        <i class="fa-solid fa-file-lines"></i> Decoded Payload
+                    </button>
+                </div>
+                
+                <div class="tab-content active" id="protocol-tree-tab">
+                    <div class="layers-tree" id="layers-tree">
+                        <div class="inspector-placeholder">
+                            <i class="fa-solid fa-network-wired"></i>
+                            <p>Select a packet from the table to inspect its structural details.</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="tab-content" id="hexdump-tab">
+                    <pre class="hexdump-view" id="hexdump-view">Select a packet to view hex bytes.</pre>
+                </div>
+                
+                <div class="tab-content" id="payload-tab">
+                    <pre class="payload-view" id="payload-view">Select a packet to view decoded ascii payload.</pre>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Custom App JS -->
+    <script src="/static/js/app.js"></script>
+</body>
+</html>
